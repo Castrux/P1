@@ -1,0 +1,1551 @@
+/*
+Gramatica para el Robot:
+Autor: Alejandro Arango
+Modificado por: Silvia Takahashi
+Modificado por: Juan Pablo Morales.
+Agregadas producciones para manejar globos
+Modificado por Silvia Takahashi
+
+
+ **/
+
+options{
+
+LOOKAHEAD=1;IGNORE_CASE=true;STATIC=false;
+
+}
+
+PARSER_BEGIN(Robot)
+
+package uniandes.lym.robot.control;
+
+import uniandes.lym.robot.kernel.*;
+import uniandes.lym.robot.view.Console;
+
+import java.awt.Point;
+import java.io.*;
+import java.util.Vector;
+import java.util.LinkedList;
+import java.util.LinkedHashMap;
+import java.util.Set;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+
+@SuppressWarnings("serial")
+public class Robot {
+
+  private RobotWorldDec world;
+
+  void setWorld(RobotWorld w) {
+    world = (RobotWorldDec) w;
+  }
+
+  String salida = new String();
+}PARSER_END(Robot)
+
+  SKIP:{" "|"\r"|"\t"|"\n"}
+
+  TOKEN: /* Nombres de Comandos */
+  {
+  // Marca el inicio del programa
+  <inicio:"ROBOT_R">
+  // Marca el inicio de una definicion de variables
+  |<defvars:"VARS">
+  // El nombre de una variable o Procedimiento que inicia con una letra(mayuscula
+  // o minuscula) seguido
+  // digitos o letras(mayusculas o minusculas)
+  |<procini:"PROCS">
+
+  // Lista de instrucciones //
+
+  |<ASSINGtO:"assignTo">
+  // Instruccion para que el robot se mueva a una posicion	
+  |<WALK:"WALK">
+  // Instruccion para que el robot se teleporte hacia una posicionn
+  |<JUMP:"jump">
+  // Instruccion para que el robot salte una cantidad de casillas en una direccion
+  // y luego quedar mirando a donde estaba inicialmente
+  |<LEAP:"leap">
+  // Instruccion para que el robot rote 90 grados en una direccion o 180 grados
+  // desde su direccion inicial
+  |<TURN:"turn">
+  // Instruccion para que el robot mire hacia una direccion
+  |<TURNTO:"turnto">
+  // Instruccion para que el robot recoja una cantidad de fichas en su posicion
+  |<GET:"get">
+  // Instruccion para que el robot recoja una cantidad de globos en su posicion
+  |<GRAB:"grab">
+  //Instrucccion para que el robot tire una cantidad de fichas
+  |<DROP: "drop">
+  //Instruccion para que el robot tire una cantidad de globos
+  |<LETGO: "letGo">
+  //No hace nada
+  |<NOP:"nop">
+
+  // Estructuras de control //
+  // Condicionales //
+  // Marca el inicio de un condicional
+  |<IF:"if">
+  |<ELSE: "else"> 
+  |<FACING:"facing">
+  |<CAN:"can">
+  |<NOT:"not">
+  |<WHILE:"while">
+  |<REPEAT:"repeat">}
+
+  TOKEN:/* Direcciones cardinales y */
+  {<LEFT:"left">
+    |<RIGHT:"right">
+    |<FRONT:"front">
+    |<BACK:"back">
+    |<AROUND:"around">
+    |<NORTH:"north">
+    |<SOUTH:"south">
+    |<EAST:"east">
+    |<WEST:"west">
+
+  }
+
+  TOKEN:/* Objetos */
+  {<BALLOONS:"balloons">
+    |<CHIPS:"chips">
+
+  }
+
+  TOKEN:/* Numeros y letras */
+  {<NUM:(<DIGIT>)+>|<#DIGIT:["0"-"9"]>|<#MAY:["A"-"Z"]>|<#MIN:["a"-"z"]>|<#LETRA:["A"-"Z","a"-"z"]>|<nombvp:(<LETRA>)+(<LETRA>|<DIGIT>)*>
+  // Marca el inicio de una definicion de un procedimientos
+
+  }
+
+  // boolean command(uniandes.lym.robot.view.Console sistema) :
+  boolean command(Console sistema) throws Exception: {
+    int x,y;salida=new String();}
+
+    {((<inicio>programa()
+
+    )
+
+    {try{Thread.sleep(900);}catch(InterruptedException e){System.err.format("IOException: %s%n",e);}
+
+    sistema.printOutput(salida);return true;})+
+
+    |<EOF>{return false;}
+  }
+
+  void programa() throws Exception: {
+    String x;
+    LinkedHashMap<String,Integer>variables=new LinkedHashMap<String,Integer>();
+    LinkedHashMap<String,LinkedHashMap<String,Integer>>procedimientos=new LinkedHashMap<String,LinkedHashMap<String,Integer>>();
+    LinkedHashMap<String,LinkedList<String>>instruccionesproc=new LinkedHashMap<String,LinkedList<String>>();
+  }
+   {(<defvars>variables(variables)";"(<procini>(x=<nombvp>.image{LinkedHashMap<String,Integer>procedimiento=new LinkedHashMap<String,Integer >();procedimientos.put(x,procedimiento);}"[""|"parametros(procedimiento)"|"bloquep(procedimientos,variables,instruccionesproc))*)?(bloque(procedimientos,variables,instruccionesproc,world))
+   |<procini>(x=<nombvp>.image{LinkedHashMap<String,Integer>procedimiento=new LinkedHashMap<String,Integer >();procedimientos.put(x,procedimiento);}"[""|"parametros(procedimiento)"|"bloquep(procedimientos,variables,instruccionesproc))*bloque(procedimientos,variables,instruccionesproc,world)
+   |bloque(procedimientos,variables,instruccionesproc,world))
+  }
+
+  void variables(LinkedHashMap<String, Integer> variables): {
+    String x;}{x=<nombvp>.image{variables.put(x,0);}(LOOKAHEAD(","<nombvp>)","x=<nombvp>.image{variables.put(x,0);})*
+  }
+
+  void parametros(LinkedHashMap<String, Integer> parametros): {
+    String x;}{(x=<nombvp>.image{parametros.put(x,0);}(LOOKAHEAD(","<nombvp>)","x=<nombvp>.image{parametros.put(x,0);})*)?
+  }
+
+  void bloque(LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, Integer> variables, LinkedHashMap<String, LinkedList<String>> instruccionesproc,
+      RobotWorldDec world) throws Exception: {
+    this.world=world;}{("[")?instrucciones(variables,procedimientos,instruccionesproc)("]")?
+  }
+
+  void instrucciones(LinkedHashMap<String, Integer> variables,
+      LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, LinkedList<String>> instruccionesproc) throws Exception: {
+    }{(listinstr(variables,procedimientos,instruccionesproc)(LOOKAHEAD((";")?listinstr(variables,procedimientos,instruccionesproc))(";")?listinstr(variables,procedimientos,instruccionesproc))*)?
+  }
+
+void listinstr(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc)throws Exception:
+{
+  	String nom,nom1;
+  	nom="";
+  	nom1="";
+	int x,y;
+	x=-1;
+	y=-1;
+	String z = null;
+	String or = null;
+}
+{
+    (LOOKAHEAD(< nombvp >"=")
+    nom=< nombvp >.image"="x=num()
+    {
+		if (variables.containsKey(nom))
+		{
+			variables.put(nom,x);
+		    x=-1;
+		}
+    }|
+  	< ASSINGtO > ":"(x=num())","(nom=< nombvp >.image)
+      {
+        
+        if (variables.containsKey(nom))
+    		{
+    			variables.put(nom,x);
+    		}
+      }
+
+
+    |
+
+  < JUMP > ":"(x=num()|nom=< nombvp >.image)","(y=num()|nom1=< nombvp >.image)
+    {
+	if (x==-1 && y==-1) {
+		  if (variables.containsKey(nom) && variables.containsKey(nom1))
+		  	{
+		  	 	x = variables.get(nom);
+		  	 	y= variables.get(nom);
+		    	world.setPostion(x,y);
+		    	x=-1;
+		    	y=-1;
+		  	}
+		  }
+	else if (x==-1 && y!=-1)
+	{
+		  if (variables.containsKey(nom))
+		  	{
+		  	 	x = variables.get(nom);
+		    	world.setPostion(x,y);
+		    	x=-1;
+		    	y=-1;
+		  	}
+	}
+	else if (x!=-1 && y==-1)
+	{
+		  if (variables.containsKey(nom1))
+		  	{
+		  	 	y = variables.get(nom1);
+		    	world.setPostion(x,y);
+		    	x=-1;
+		    	y=-1;
+		  	}
+	}
+	else
+	{
+	  world.setPostion(x,y);
+		x=-1;
+		y=-1;
+	}
+	}
+    
+	| < WALK >":"(x=num()|nom=< nombvp >.image)
+    {
+	if (x==-1) {
+		  if (variables.containsKey(nom))
+		  	{
+		  	 	x = variables.get(nom);
+		    	world.WALKForward(x,true);
+		    	x=-1;
+		  	}
+		  }
+	else
+	{
+	  world.WALKForward(x,true);
+		x=-1;
+	}
+	}
+
+	| < DROP>  ":" (  z=< NUM>.image| z =< nombvp>.image)"," (or=<CHIPS>.image) 
+	{ if (variables.containsKey(z)) { z = Integer.toString(variables.get(z));}
+	drop(Integer.parseInt(z.strip()), or); z =null;}
+	| < LETGO>  ":" (  z=< NUM>.image| z =< nombvp>.image)"," (or=<BALLOONS>.image) 
+	{ if (variables.containsKey(z)) { z = Integer.toString(variables.get(z));}
+	letGo(Integer.parseInt(z.strip()), or); z =null;}
+	| < GET>  ":" (  z=< NUM>.image| z =< nombvp>.image)"," (or=<CHIPS>.image)
+	{ if (variables.containsKey(z)) { z = Integer.toString(variables.get(z));}
+	get(Integer.parseInt(z.strip()), or); z =null;}
+	| < GRAB>  ":" (  z=< NUM>.image| z =< nombvp>.image)"," (or=<BALLOONS>.image)
+	{ if (variables.containsKey(z)) { z = Integer.toString(variables.get(z));}
+	grab(Integer.parseInt(z.strip()), or); z =null;}
+	| < LEAP>  ":" (  z=< NUM>.image | z =< nombvp>.image)"," (or=<LEFT>.image| or=<RIGHT>.image| or=<FRONT>.image|or=<BACK>.image )
+	{ if (variables.containsKey(z)) { z = Integer.toString(variables.get(z));}
+	LEAP(Integer.parseInt(z.strip()),or); z =null;}
+  | < NOP>  ":"
+  {
+  }
+	| < TURN >":"(nom=< LEFT >.image|nom=< RIGHT >.image|nom=< AROUND >.image)
+	{
+	  if (nom.equals("left"))
+	  {
+	    world.turnRight();
+	    world.turnRight();
+	    world.turnRight();
+	    nom="";
+	  }
+	 else if (nom.equals("around"))
+	  {
+	    world.turnRight();
+	    world.turnRight();
+	    nom="";
+	  }
+	  else if (nom.equals("right"))
+	  {
+	    world.turnRight();
+	    nom="";
+	   }
+	}
+	| < TURNTO >":"(nom=< NORTH >.image|nom=< SOUTH >.image|nom=< EAST >.image |nom=< WEST >.image)
+	{
+	  	// Si el robot esta mirando al norte:
+		if (world.getFacing()==0)
+		{
+		  if (nom=="north"){nom="";}
+		  else if (nom.equals("east"))
+		  {
+			world.turnRight();
+	    	nom="";
+		   }
+		  else if (nom.equals("south") || nom.equals("around"))
+		  {
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		   }
+		  else if (nom.equals("west"))
+		  {
+			world.turnRight();
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		   }
+		}
+	  	// Si el robot esta mirando al este:
+		else if (world.getFacing()==2)
+		{
+		  if (nom.equals("north"))
+		  {
+			world.turnRight();
+			world.turnRight();
+			world.turnRight();
+	   	 	nom="";
+		  }
+		  else if (nom.equals("east")){nom="";}
+		  else if (nom.equals("south"))
+		  {
+			world.turnRight();
+	    	nom="";
+		   }
+		  else if (nom.equals("west") || nom.equals("around"))
+		  {
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		   }
+		}
+	  	// Si el robot esta mirando al oeste:
+		else if (world.getFacing()==3)
+		{
+		  if (nom.equals("north"))
+		  {
+			world.turnRight();
+	    	nom="";
+		  }
+		  else if (nom.equals("east") || nom.equals("around"))
+		  {
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		   }
+		  else if (nom.equals("south"))
+		  {
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+			}
+		  else if (nom.equals("west")){nom="";}
+		}
+	  	// Si el robot esta mirando al sur:
+		else if (world.getFacing()==1)
+		{
+		  if (nom.equals("north") || nom.equals("around"))
+		  {
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		  }
+		  else if (nom.equals("east"))
+		  {
+			world.turnRight();
+			world.turnRight();
+			world.turnRight();
+	    	nom="";
+		   }
+		  else if (nom.equals("south")){nom="";}
+		  else if (nom.equals("west"))
+		  {
+			world.turnRight();
+	    	nom="";
+		   }
+		}
+	}
+	| nom=< nombvp >.image":"
+	{
+	  if (!procedimientos.containsKey(nom))
+	  {throw new ParseException("El procedimiento "+nom+" no ha sido declarado anteriormente");}
+	}
+	 ((y=num() | nom1 = <nombvp>.image { y =variables.get(nom1); })
+	{
+		x+=1;
+		LinkedHashMap<String, Integer> procedimiento = procedimientos.get(nom);
+		Set<String> keys = procedimiento.keySet();
+		String[] llaves = new String[keys.size()];
+		keys.toArray(llaves);
+		int size = procedimiento.size();
+		if (x <= size)
+		{
+		 	String parametro = llaves[x];
+			procedimiento.put(parametro,y);
+		}
+	}
+	(LOOKAHEAD(","(num()|<nombvp>))","(y=num() | nom1 = <nombvp>.image { y =variables.get(nom1); }))*
+	{
+		x+=1;
+		LinkedHashMap<String, Integer> procedimiento1 = procedimientos.get(nom);
+		Set<String> keys1 = procedimiento1.keySet();
+		String[] llaves1 = new String[keys1.size()];
+		keys1.toArray(llaves1);
+		int size1 = procedimiento1.size();
+		if (x <= size1)
+		{
+		 	String parametro = llaves1[x];
+			procedimiento1.put(parametro,y);
+		}
+	}
+	)?
+	{
+	  LinkedHashMap<String, Integer> procedimiento = procedimientos.get(nom);
+	  LinkedList<String > listainstrucciones = instruccionesproc.get(nom);
+	  String instrucciones= "";
+	  int centinela = 0;
+	  String nombreinstruccion;
+	  int fin = listainstrucciones.size();
+	  for (String instruccion: listainstrucciones)
+	  {
+	    centinela+=1;
+	 	String parametrosp = "";
+	    String[] partesinstruccion = instruccion.split("\\:");
+
+	    if (partesinstruccion.length > 1) {
+	    nombreinstruccion = partesinstruccion[0];
+	   	String parteuno = partesinstruccion[1];
+	   	String[] parametrosv = parteuno.split(",");
+	   	int centinela2 = 0;
+	   	int cantidad = parametrosv.length;
+	   	for (String parametro: parametrosv)
+	   	{
+	   	  	centinela2+=1;
+	   	  	if (parametro.equals("right") || parametro.equals("left") || parametro.equals("north") || parametro.equals("south") || parametro.equals("east") || parametro.equals("west") || parametro.equals("around"))
+	   	  	{ 
+		   	 	parametrosp+=parametro;
+	   		}
+	   		else {
+	   		  if (procedimiento.containsKey(parametro))
+	   		  { 
+		   	 	String valor = (procedimiento.get(parametro)).toString();
+		   	 	parametrosp+=valor;
+		   	}
+		   	  else
+		   	  {
+		   	    if (variables.containsKey(parametro)) { 
+		   	 	String valor = (variables.get(parametro)).toString();
+		   	 	parametrosp+=valor; }
+
+		   	 	else {
+		   	 	  String valor= parametro.toString();
+		   	 	  parametrosp+=valor;
+		   	 	}
+		   	  }
+		   	if (centinela2!=cantidad)
+		   	{
+	    		parametrosp+=",";
+		   	}
+		   }
+	   	}
+	    }
+	   	else {
+	   	  nombreinstruccion = partesinstruccion[0];
+	   	  parametrosp="";
+	   	}
+	    instrucciones+=nombreinstruccion+":"+parametrosp;
+	    if (centinela!=fin)
+	    {
+	    	instrucciones+=";";
+	    }
+	  }
+	  InputStream entrada = new ByteArrayInputStream(instrucciones.getBytes(StandardCharsets.UTF_8));
+	  Robot parser = new Robot(entrada);
+	  parser.bloque(procedimientos,variables,instruccionesproc,world);
+	}
+	| estrucontrol(variables,procedimientos,instruccionesproc)
+)
+}
+
+void estrucontrol(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc) throws Exception:
+{
+  boolean condicion;
+  String condicionw="";
+  String condiciones="";
+  String x ="";
+  int y ;
+}
+{
+  < IF >":"(x=< NOT >.image ":"condicion=condiciones(variables,procedimientos,instruccionesproc,world)|condicion=condiciones(variables,procedimientos,instruccionesproc,world))<ELSE>":"
+  {
+    if (!x.equals(""))
+    {
+      condicion= !condicion;
+    }
+    if(condicion==true)
+  	{
+    	bloque(procedimientos,variables,instruccionesproc,world);
+    }
+   	else
+   	{
+    	consumeblock();
+   	}
+  }
+  
+  
+	|< WHILE > ":"(x=< NOT >.image":" condicionw=guardarcondicion(variables,procedimientos,instruccionesproc){ condiciones+=x+condicionw; }|condicionw=guardarcondicion(variables,procedimientos,instruccionesproc))":"
+  {
+      LinkedHashMap<String,Integer> procedimientow = new LinkedHashMap<String,Integer>();
+      procedimientos.put("while",procedimientow);
+      bloquep(procedimientos,variables,instruccionesproc);
+	  InputStream entradaini = new ByteArrayInputStream(condicionw.getBytes(StandardCharsets.UTF_8));
+	  Robot parserini = new Robot(entradaini);
+	  boolean condini = parserini.condiciones(variables,procedimientos,instruccionesproc,world);
+	  while (condini)
+	  {
+		  LinkedList<String > listainstrucciones = instruccionesproc.get("while");
+		  String instrucciones= "[";
+		  int centinela = 0;
+		  int fin = listainstrucciones.size();
+		  for (String instruccion: listainstrucciones)
+		  {
+		    centinela+=1;
+		    instrucciones+=instruccion;
+		    if (centinela!=fin)
+		    {
+		    	instrucciones+=";";
+		    }
+		  }
+		  instrucciones+= "]";
+		  InputStream entrada = new ByteArrayInputStream(instrucciones.getBytes(StandardCharsets.UTF_8));
+		  Robot parser = new Robot(entrada);
+		  parser.bloque(procedimientos,variables,instruccionesproc,world);
+		  InputStream entradacond = new ByteArrayInputStream(condicionw.getBytes(StandardCharsets.UTF_8));
+		  Robot parsercond = new Robot(entradacond);
+		  parsercond.condiciones(variables,procedimientos,instruccionesproc,world);
+    	}
+	}
+	| < REPEAT >":"y=num() 
+	{
+	  if (y==0)
+	  {}
+      LinkedHashMap<String,Integer> procedimientor = new LinkedHashMap<String,Integer>();
+      procedimientos.put("repeat",procedimientor);
+	  int centinela1 = 0;
+      bloquep(procedimientos,variables,instruccionesproc);
+	  while (centinela1 < y)
+	  {
+		  LinkedList<String > listainstrucciones = instruccionesproc.get("repeat");
+		  String instrucciones= "[";
+		  int centinela = 0;
+		  int fin = listainstrucciones.size();
+		  for (String instruccion: listainstrucciones)
+		  {
+		    centinela+=1;
+		    instrucciones+=instruccion;
+		    if (centinela!=fin)
+		    {
+		    	instrucciones+=";";
+		    }
+		  }
+		  instrucciones+= "]";
+		  InputStream entrada = new ByteArrayInputStream(instrucciones.getBytes(StandardCharsets.UTF_8));
+		  Robot parser = new Robot(entrada);
+		  parser.bloque(procedimientos,variables,instruccionesproc,world);
+		  centinela1+=1;
+    	}
+	}
+
+}
+
+void consumeblock(): {
+    }{("[")?(consumelistinstr()(LOOKAHEAD(";"consumelistinstr())";"consumelistinstr())*)?("]")?
+  }
+
+  void consumelistinstr(): 
+  {}
+    {
+      (LOOKAHEAD(<nombvp>"=")<nombvp>"="num()
+        |<WALK>":"(num()|<nombvp>)
+        |<ASSINGtO>":"(num())","(<nombvp>)
+        |<JUMP>":"(num()|<nombvp>)","(num()|<nombvp>)
+        |<TURN>":"(<LEFT>|<RIGHT>|<AROUND>)
+        |<TURNTO>":" (<NORTH>|<SOUTH>|<EAST>|<WEST>)
+        |<DROP>":"(<NUM>|<nombvp>)","(<CHIPS>)
+        |<LETGO>":"(<NUM>|<nombvp>)","(<BALLOONS>)
+        |<GET>":"(<NUM>|<nombvp>)","(<CHIPS>)
+        |<GRAB>":"(<NUM>|<nombvp>)","(<BALLOONS>)
+        |<LEAP>":"(<NUM>|<nombvp>)","(<LEFT>|<RIGHT>|<FRONT>|<BACK>)
+        |<NOP>":"
+        |<nombvp>":"(num()(LOOKAHEAD(","num())","num())*)?
+        |consumeestrucontrol())
+  }
+
+  void consumeestrucontrol():
+  {}
+  {
+    < IF >" "(< NOT >" "consumecondiciones()" "|consumecondiciones())<ELSE>" "consumeblock()
+    | < WHILE > ""(< NOT >" " consumecondiciones()|consumecondiciones())< DO >":"consumeblock()
+    | < REPEAT >""(num()|<nombvp>)consumeblock()
+  }
+
+
+  void consumecondiciones():
+  {}
+  {
+    (
+      	< FACING >":"(< NORTH >|< SOUTH >|< EAST >|< WEST >)
+     	| < CANWALKiNdIR > ":"num()","(< NORTH >|< SOUTH >|< EAST > |< WEST >)
+        | < CANjUMPiNdIR > ":"num()","(< NORTH >|< SOUTH >|< EAST >|< WEST >)
+        | < CANWALKtOtHE > ":"num()","(< RIGHT >|< FRONT >|< BACK > |< LEFT >)
+        | < CANLEAP > ":"num()","(< RIGHT >|< FRONT >|< BACK >|< LEFT >)
+        | < CANpUT > ":"(num()|<nombvp>)","(< BALLOONS >|< CHIPS >)
+     	| < CANpICK > ":"(num()|<nombvp>)","(< BALLOONS >|< CHIPS >)
+    )
+} 
+
+boolean condiciones(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc, RobotWorldDec world):
+  {
+    this.world = world;
+    String nom;
+    int x;
+    x=-1;
+  }
+  {
+    (
+      	< FACING >":"(nom=< NORTH >.image|nom=< SOUTH >.image|nom=< EAST >.image|nom=< WEST >.image)
+      	{
+  			if (world.getFacing()==0 && nom.equals("north"))
+  			{
+  			  return true;
+  			}
+  			else if (world.getFacing()==1 && nom.equals("south"))
+  			{
+  			  return true;
+  			}
+  			else if (world.getFacing()==2 && nom.equals("east"))
+  			{
+  			  return true;
+  			}
+  			else if (world.getFacing()==3 && nom.equals("west"))
+  			{
+  			  return true;
+  			}
+  			else
+  			{
+  			  return false;
+  			}
+      	}
+     		| < CANWALKiNdIR > ":"x=num()","(nom=< NORTH >.image|nom=< SOUTH >.image|nom=< EAST >.image |nom=< WEST >.image)
+     		{
+     		  int centinela = 0;
+     		  Point position = new Point(world.getPosition());
+     		  if(nom.equals("south"))
+     		  {
+     		    if (position.getY()+x >8)
+     		    {
+     		      return false;
+     		    }
+     		    if (centinela==x)
+     		    {return true;}
+     		    while (centinela!=x)
+     		    { 
+     		    	position.setLocation((position.getX()),(position.getY()+1));
+     		    	if (world.isBlocked(position))
+     		    	{ 
+     		  			return false;
+     		  		}
+     		  		centinela+=1;
+              if (centinela == x){
+                return true;
+              }
+     		 	}
+     		 }
+     		  if(nom.equals("north"))
+     		  {
+     		    if (position.getY()-x<1)
+     		    {
+     		      return false;
+     		    }
+     		    if (centinela==x)
+     		    {return true;}
+     		    while (centinela!=x)
+     		    { 
+     		    	position.setLocation((position.getX()),(position.getY()-1));
+     		    	if (world.isBlocked(position))
+     		    	{ 
+     		  			return false;
+     		  		}
+     		  		centinela+=1;
+              if (centinela == x){
+                return true;
+              }
+     		 	}
+     		  }
+     		  if(nom.equals("east"))
+     		  {
+     		    if (position.getX()+x >8)
+     		    {
+     		      return false;
+     		    }
+     		    if (centinela==x)
+     		    {return true;}
+     		    while (centinela!=x)
+     		    { 
+     		    	position.setLocation((position.getX()+1),(position.getY()));
+     		    	if (world.isBlocked(position))
+     		    	{ 
+     		  			return false;
+     		  		}
+     		  		centinela+=1;
+              if (centinela == x){
+                return true;
+              }
+     		 	}
+     		  }
+     		  if(nom.equals("west"))
+     		  {
+     		    if (position.getX()-x <1)
+     		    {
+     		      return false;
+     		    }
+     		    if (centinela==x)
+     		    {return true;}
+     		    while (centinela!=x)
+     		    { 
+     		    	position.setLocation((position.getX()-1),(position.getY()));
+     		    	if (world.isBlocked(position))
+     		    	{ 
+     		  			return false;
+     		  		}
+     		  		centinela+=1;
+              if (centinela == x){
+                return true;
+              }
+     		 	}
+     		  }
+     		}
+    | < CANWALKtOtHE > ":"x=num()","(nom=< RIGHT >.image|nom=< FRONT >.image|nom=< BACK >.image |nom=< LEFT >.image)
+     		{
+     		  int bandera = 0;
+     		  Point position2 = new Point(world.getPosition());
+      
+          if(nom.equals("back"))
+            {
+     		    if (position2.getY()+x >8)
+     		    {
+     		      return false;
+     		    }
+     		    if (bandera==x)
+     		    {return true;}
+     		    while (bandera!=x)
+     		    { 
+     		    	position2.setLocation((position2.getX()),(position2.getY()+1));
+     		    	if (world.isBlocked(position2))
+     		    	{ 
+     		  			return false;
+     		  		}
+     		  		bandera+=1;
+              if (bandera == x){
+                return true;
+              }
+     		 	  }
+     		   }
+
+          if(nom.equals("front"))
+              {
+       		    if (position2.getY()-x <1)
+       		    {
+       		      return false;
+       		    }
+       		    if (bandera==x)
+       		    {return true;}
+       		    while (bandera!=x)
+       		    { 
+       		    	position2.setLocation((position2.getX()),(position2.getY()-1));
+       		    	if (world.isBlocked(position2))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  		bandera+=1;
+                if (bandera== x){
+                return true;
+              }
+       		 	  }
+       		   }
+
+          if(nom.equals("right"))
+              {
+       		    if (position2.getX()+x >8)
+       		    {
+       		      return false;
+       		    }
+       		    if (bandera==x)
+       		    {return true;}
+       		    while (bandera!=x)
+       		    { 
+       		    	position2.setLocation((position2.getX()+1),(position2.getY()));
+       		    	if (world.isBlocked(position2))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  		bandera+=1;
+                if (bandera == x){
+                return true;
+              }
+       		 	  }
+       		   }
+
+          if(nom.equals("left"))
+              {
+       		    if (position2.getX()-x <1)
+       		    {
+       		      return false;
+       		    }
+       		    if (bandera==x)
+       		    {return true;}
+       		    while (bandera!=x)
+       		    { 
+       		    	position2.setLocation((position2.getX()-1),(position2.getY()));
+       		    	if (world.isBlocked(position2))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  		bandera+=1;
+                if (bandera == x){
+                return true;
+              }
+       		 	  }
+       		   }
+     		}
+        | < CANjUMPiNdIR > ":"x=num()","(nom=< NORTH >.image|nom=< SOUTH >.image|nom=< EAST >.image |nom=< WEST >.image)
+     		{
+     		  Point position3 = new Point(world.getPosition());
+     		  if(nom.equals("south"))
+     		  {
+     		    if (position3.getY()+x >8)
+     		    {
+     		      return false;
+     		    }
+          
+            position3.setLocation((position3.getX()),(position3.getY()+x));
+
+            if (world.isBlocked(position3))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+     		    
+     		  }
+     		  if(nom.equals("north"))
+     		  {
+     		    if (position3.getY()-x<1)
+     		    {
+     		      return false;
+     		    }
+          
+            position3.setLocation((position3.getX()),(position3.getY()-1));
+
+            if (world.isBlocked(position3))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+     		  }
+     		  if(nom.equals("east"))
+     		  {
+     		    if (position3.getX()+x >8)
+     		    {
+     		      return false;
+     		    }
+          
+            position3.setLocation((position3.getX()+x),(position3.getY()));
+
+            if (world.isBlocked(position3))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+          }
+     		  if(nom.equals("west"))
+     		  {
+     		    if (position3.getX()-x <1)
+     		    {
+     		      return false;
+     		    }
+          
+            position3.setLocation((position3.getX()-x),(position3.getY()));
+
+            if (world.isBlocked(position3))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+          }
+     		}
+        | < CANLEAP > ":"x=num()","(nom=< LEFT >.image|nom=< RIGHT >.image|nom=< FRONT >.image|nom=< BACK >.image)
+     		{
+     		  Point position4 = new Point(world.getPosition());
+     		  if(nom.equals("back"))
+     		  {
+     		    if (position4.getY()+x >8)
+     		    {
+     		      return false;
+     		    }
+          
+            position4.setLocation((position4.getX()),(position4.getY()+x));
+
+            if (world.isBlocked(position4))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+     		    
+     		  }
+     		  if(nom.equals("front"))
+     		  {
+     		    if (position4.getY()-x<1)
+     		    {
+     		      return false;
+     		    }
+          
+            position4.setLocation((position4.getX()),(position4.getY()-1));
+
+            if (world.isBlocked(position4))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+     		  }
+     		  if(nom.equals("right"))
+     		  {
+     		    if (position4.getX()+x >8)
+     		    {
+     		      return false;
+     		    }
+          
+            position4.setLocation((position4.getX()+x),(position4.getY()));
+
+            if (world.isBlocked(position4))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+          }
+     		  if(nom.equals("left"))
+     		  {
+     		    if (position4.getX()-x <1)
+     		    {
+     		      return false;
+     		    }
+          
+            position4.setLocation((position4.getX()-x),(position4.getY()));
+
+            if (world.isBlocked(position4))
+       		    	{ 
+       		  			return false;
+       		  		}
+       		  else
+       		  		{
+       		  		  return true;
+       		  		}
+          }
+     		}
+        |<CANpUT>":"(x=num()|nom=< nombvp >.image)","(nom=<BALLOONS>.image|nom=<CHIPS>.image){
+    if (x==-1) {
+		  if (variables.containsKey(nom))
+		  	{
+		  	 	x = variables.get(nom);
+		  	 	if(nom.equals("balloons")){
+            try {world.putBalloons(x);world.popBalloons(x); return true;  }
+			
+      			catch (Error e){
+         		  	  return false;}
+          }else if(nom.equals("chips")){
+            return vDrop(x);
+          }
+		    	
+		    	x=-1;
+		  	}
+		  }
+    else {
+      if(nom.equals("balloons")){
+          try {world.putBalloons(x);world.popBalloons(x); return true;  }
+			
+      			catch (Error e){
+         		  	  return false;}
+      }else if(nom.equals("chips")){
+        return vDrop(x);
+      }
+      x=-1;
+    }
+    }|<CANpICK>":"(x=num()|nom=< nombvp >.image)","(nom=<BALLOONS>.image|nom=<CHIPS>.image){
+      if (x==-1) {
+		  if (variables.containsKey(nom))
+		  	{
+		  	 	x = variables.get(nom);
+		  	 	if(nom.equals("balloons")){
+            try {world.popBalloons(x);world.putBalloons(x); return true;  }
+			
+      			catch (Error e){
+         		  	  return false;}
+   		  	   
+          }else if(nom.equals("chips")){
+            int x2 = (int)world.getPosition().getX();
+   		  	  int y  =(int) world.getPosition().getY();
+    			  boolean f2= true;
+    			  for (int i = y ; i<9;i++) { 
+              Point temp = new Point(x2,i );
+    			    if (!world.chipExists(temp)) { f2= false;}
+            }
+    		 	  if ( f2 && y+x <=9) { return true;} else { return false;}
+          }
+		    	
+		    	x=-1;
+		  	}
+		  }
+    else {
+      if(nom.equals("balloons")){
+          try {world.popBalloons(x);world.putBalloons(x); return true;  }
+			
+    			catch (Error e){
+       		  	  return false;}
+   		  	   
+      }else if(nom.equals("chips")){
+        int x2 = (int)world.getPosition().getX();
+   		  	  int y  =(int) world.getPosition().getY();
+    			  boolean f2= true;
+    			  for (int i = y ; i<9;i++) { 
+              Point temp = new Point(x2,i );
+    			    if (!world.chipExists(temp)) { f2= false;}
+            }
+    		 	  if ( f2 && y+x <=9) { return true;} else { return false;}
+          }
+      }
+      x=-1;
+    }
+      
+      )
+  }
+
+  void bloquep(LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, Integer> variables, LinkedHashMap<String, LinkedList<String>> instruccionesproc): {
+    }{("[")?instruccionesp(variables,procedimientos,instruccionesproc)("]")?
+  }
+
+  void instruccionesp(LinkedHashMap<String, Integer> variables,
+      LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, LinkedList<String>> instruccionesproc): {
+    }{(listinstrp(variables,procedimientos,instruccionesproc)(LOOKAHEAD(";"listinstrp(variables,procedimientos,instruccionesproc))";"listinstrp(variables,procedimientos,instruccionesproc))*)?
+  }
+
+void listinstrp(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc) :
+{
+	String variable;
+	String variable1;
+	int numero;
+	int numero1;
+	numero = -1;
+	numero1 = -1;
+	variable = "";
+	variable1 = "";
+	String instrucciones = "";
+	String z = null;
+	String or = null;
+}
+{
+  	(LOOKAHEAD(< nombvp >"=")
+    (variable=< nombvp >.image"="numero=num() {instrucciones=variable+"="+numero;})|(< nombvp >":" (num()(LOOKAHEAD(","num())","num())*)? { })
+ 	| (< WALK > ":" (z=<NUM>.image|z=< nombvp >.image){
+ 	  if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALK"+":"+variables.get(z);
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALK"+":"+z;
+ 	  }
+ 	  })
+	| (< PUT > ":" (z=<NUM>.image| z= <nombvp>.image)"," (or=<BALLOONS>.image| or=<CHIPS>.image){
+ 	  if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="put"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="put"+":"+z+","+or;
+ 	  }
+ 	  })
+ 	 | (< PICK > ":" (z=<NUM>.image| z= <nombvp>.image)"," (or=<BALLOONS>.image| or=<CHIPS>.image){
+ 	  if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="pick"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="pick"+":"+z+","+or;
+ 	  }
+ 	  })
+ 	  | < WALKtOtHE > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<LEFT>.image| or=<RIGHT>.image| or=<FRONT>.image|or=<BACK>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALKToThe"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALKToThe"+":"+z+","+or;
+ 	  }
+	} 
+	| < WALKiNdIR > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<NORTH>.image| or=<SOUTH>.image| or=<WEST>.image|or=<EAST>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALKInDir"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALKInDir"+":"+z+","+or;
+ 	  }
+	}
+  | < LEAP > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<LEFT>.image| or=<RIGHT>.image| or=<FRONT>.image|or=<BACK>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="LEAP"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="LEAP"+":"+z+","+or;
+ 	  }
+	} 
+	| < JUMPiNdIR > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<NORTH>.image| or=<SOUTH>.image| or=<WEST>.image|or=<EAST>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="jumpInDir"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="jumpInDir"+":"+z+","+or;
+ 	  }
+	}|(<ASSINGtO>":"(numero= num())","(variable=< nombvp >.image){
+	  if (variables.containsKey(variable))
+ 	  {
+ 	  	instrucciones="assignTo"+":"+numero+","+variable;
+ 	  }
+
+ 	  })
+	| (< JUMP > ":" (numero=num()|variable=< nombvp >.image)","(numero1=num()|variable1=< nombvp >.image){
+ 	  if (numero==-1 && numero1==-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+variable+","+variable1;
+ 	  }
+ 	  else if (numero==-1 && numero1!=-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+variable+","+numero1;
+ 	  }
+ 	  else if (numero!=-1 && numero1==-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+numero+","+variable1;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="JUMP"+":"+numero+","+numero1;
+ 	  }
+ 	  })
+	| (< TURN > ":" (variable=< LEFT >.image|variable=< RIGHT >.image|variable=< AROUND >.image){
+ 	  	instrucciones="turn"+":"+variable;
+ 	  })
+	| (< FACE > ":" (variable=< NORTH >.image|variable=< SOUTH >.image|variable=< EAST >.image |variable=< WEST >.image){
+ 	  if (numero==-1)
+ 	  {
+ 	  	instrucciones="face"+":"+variable;
+ 	  }
+ 	  })
+  | (< NOP > ":" {
+ 	  instrucciones="nop"+":";
+ 	  })
+	|  instrucciones=estrucontrolp(variables,procedimientos,instruccionesproc)
+	)
+	{
+		Set<String> keys = procedimientos.keySet();
+		String[] llaves = new String[keys.size()];
+		keys.toArray(llaves);
+		int size = llaves.length;
+		String parametro = llaves[size-1];
+		LinkedList<String > instruccion = instruccionesproc.get(parametro);
+		if (instruccion==(null))
+		{
+		  	instruccion = new LinkedList<String >();
+		  	instruccion.add(instrucciones);
+	  		instruccionesproc.put(parametro,instruccion);
+		}
+		else
+		{
+		  	instruccion.add(instrucciones);
+	  		instruccionesproc.put(parametro,instruccion);
+		}
+	}
+}
+
+  String estrucontrolp(LinkedHashMap<String, Integer> variables,
+      LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, LinkedList<String>> instruccionesproc): {
+    String instrucciones="";String condiciones;String x=null;}
+    {<IF>{instrucciones+="if"+":";}":"(<NOT>":"condiciones=condicionesp(variables,procedimientos,instruccionesproc){instrucciones+="not"+":"+condiciones;}|condiciones=condicionesp(variables,procedimientos,instruccionesproc){instrucciones+=condiciones;})<THEN>":"bloquep(procedimientos,variables,instruccionesproc)(<ELSE>":"bloquep(procedimientos,variables,instruccionesproc)){return instrucciones;}
+    |<WHILE>{instrucciones+="while"+":";}":"(<NOT>":"condiciones=condicionesp(variables,procedimientos,instruccionesproc){instrucciones+="not"+":"+condiciones;}|condiciones=condicionesp(variables,procedimientos,instruccionesproc){instrucciones+=condiciones;}){instrucciones+="do";}<DO>":"bloquep(procedimientos,variables,instruccionesproc){return"while";}
+    |<REPEAT>":"(x=<NUM>.image| x= <nombvp>.image){
+ 	  if (variables.containsKey(x))
+ 	  {
+ 	  	instrucciones="repeat"+":"+variables.get(x);
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="repeat"+":"+x;
+ 	  }
+  }bloquep(procedimientos,variables,instruccionesproc) { return "repeat"; }
+}
+
+  String condicionesp(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc):
+{
+  String x;
+  int y;
+  String s;
+  x="";
+  y=-1;
+  s="";
+}
+{
+	< FACING >":"(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "facing"+":"+x;
+	}
+  | < CANWALKiNdIR > ":"y=num()","(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "canWALKInDir"+":"+y+","+x;
+	}
+  | < CANjUMPiNdIR > ":"y=num()","(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "canJumpInDir"+":"+y+","+x;
+	}
+  | < CANWALKtOtHE > ":"y=num()","(x=< FRONT >.image|x=< BACK >.image|x=< RIGHT >.image |x=< LEFT >.image)
+	{
+	  return "canWALKToThe"+":"+y+","+x;
+	}
+  | < CANLEAP > ":"y=num()","(x=< FRONT >.image|x=< BACK >.image|x=< RIGHT >.image |x=< LEFT >.image)
+	{
+	  return "canLEAP"+":"+y+","+x;
+	}
+  | < CANpUT > ":"(y=num()|s=<nombvp>.image)","(x=< BALLOONS >.image|x=< CHIPS >.image)
+	{
+		
+ 	  if (y==-1)
+ 	  {
+ 	  	return"canPut"+":"+s+","+x;
+ 	  }
+ 	  else
+ 	  {
+ 	  	return "canPut"+":"+y+","+x;
+ 	  }
+ 	  
+	}
+  | < CANpICK > ":"(y=num()|s=<nombvp>.image)","(x=< BALLOONS >.image|x=< CHIPS >.image)
+	{
+	if (y==-1)
+ 	  {
+ 	  	return"canPick"+":"+s+","+x;
+ 	  }
+ 	  else
+ 	  {
+ 	  	return "canPick"+":"+y+","+x;
+ 	  }
+	}
+}
+
+  String guardarcondicion(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc):
+{
+  String x;
+  int y;
+}
+{
+	< FACING >":"(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "facing"+":"+x;
+	}
+  | < CANWALKiNdIR > ":"y=num()","(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "canWALKInDir"+":"+y+","+x;
+	}
+  | < CANjUMPiNdIR > ":"y=num()","(x=< NORTH >.image|x=< SOUTH >.image|x=< EAST >.image |x=< WEST >.image)
+	{
+	  return "canJumpInDir"+":"+y+","+x;
+	}
+  | < CANWALKtOtHE > ":"y=num()","(x=< FRONT >.image|x=< BACK >.image|x=< RIGHT >.image |x=< LEFT >.image)
+	{
+	  return "canWALKToThe"+":"+y+","+x;
+	}
+  | < CANLEAP > ":"y=num()","(x=< FRONT >.image|x=< BACK >.image|x=< RIGHT >.image |x=< LEFT >.image)
+	{
+	  return "canLEAP"+":"+y+","+x;
+	}
+  | < CANpUT > ":"y=num()","(x=< BALLOONS >.image|x=< CHIPS >.image)
+	{
+	  return "canPut"+":"+y+","+x;
+	}
+  | < CANpICK > ":"y=num()","(x=< BALLOONS >.image|x=< CHIPS >.image)
+	{
+	  return "canPick"+":"+y+","+x;
+	}
+}
+
+  String guardarbloque(LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, Integer> variables, LinkedHashMap<String, LinkedList<String>> instruccionesproc): {
+    }{{return"["+guardarinstrucciones(variables,procedimientos,instruccionesproc)+"]";}
+  }
+
+  String guardarinstrucciones(LinkedHashMap<String, Integer> variables,
+      LinkedHashMap<String, LinkedHashMap<String, Integer>> procedimientos,
+      LinkedHashMap<String, LinkedList<String>> instruccionesproc): {
+    LinkedList<String>listrucciones=new LinkedList<String>();String truccion;}{(truccion=guardarinstrp(variables,procedimientos,instruccionesproc){listrucciones.add(truccion);}(LOOKAHEAD(";"listinstrp(variables,procedimientos,instruccionesproc))";"truccion=guardarinstrp(variables,procedimientos,instruccionesproc){listrucciones.add(";"+truccion);})*{String todas="";for(String struccion:listrucciones){todas+=truccion;}return todas;})?{return"";}
+  }
+
+String guardarinstrp(LinkedHashMap<String,Integer> variables, LinkedHashMap<String,LinkedHashMap<String,Integer>> procedimientos, LinkedHashMap<String,LinkedList<String >> instruccionesproc) :
+{
+	String variable;
+	String variable1;
+	int numero;
+	int numero1;
+	numero = -1;
+	numero1 = -1;
+	variable = "";
+	variable1 = "";
+	String instrucciones = "";
+	String z = null;
+	String or = null;
+}
+{
+  	(LOOKAHEAD(< nombvp >"=")
+    (variable=< nombvp >.image"="numero=num() {instrucciones=variable+"="+numero;})|(< nombvp >":" (num()(LOOKAHEAD(","num())","num())*)? { })
+ 	| (< WALK > ":" (z=<NUM>.image|z=< nombvp >.image){
+ 	   if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALK"+":"+variables.get(z);
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALK"+":"+z;
+ 	  }
+ 	  })
+	| (< PUT > ":" (z=<NUM>.image| z= <nombvp>.image)"," (or=<BALLOONS>.image| or=<CHIPS>.image){
+ 	  if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="put"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="put"+":"+z+","+or;
+ 	  }
+ 	  })
+ 	 | (< PICK > ":" (z=<NUM>.image| z= <nombvp>.image)"," (or=<BALLOONS>.image| or=<CHIPS>.image){
+ 	  if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="pick"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="pick"+":"+z+","+or;
+ 	  }
+ 	  })
+ 	  | < WALKtOtHE > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<LEFT>.image| or=<RIGHT>.image| or=<FRONT>.image|or=<BACK>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALKToThe"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALKToThe"+":"+z+","+or;
+ 	  }
+	} 
+	| < WALKiNdIR > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<NORTH>.image| or=<SOUTH>.image| or=<WEST>.image|or=<EAST>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="WALKInDir"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="WALKInDir"+":"+z+","+or;
+ 	  }
+	}
+  | < LEAP > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<LEFT>.image| or=<RIGHT>.image| or=<FRONT>.image|or=<BACK>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="LEAP"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="LEAP"+":"+z+","+or;
+ 	  }
+	} 
+	| < JUMPiNdIR > ":" (z=< NUM>.image| z= <nombvp>.image )"," (or=<NORTH>.image| or=<SOUTH>.image| or=<WEST>.image|or=<EAST>.image )
+	{if (variables.containsKey(z))
+ 	  {
+ 	  	instrucciones="jumpInDir"+":"+variables.get(z)+","+or;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="jumpInDir"+":"+z+","+or;
+ 	  }
+	}|(<ASSINGtO>":"((numero= num())","(variable=< nombvp >.image)){
+	  if (variables.containsKey(variable))
+ 	  {
+ 	  	instrucciones="assignTo"+":"+numero+","+variable;
+ 	  }
+ 	  })
+	| (< JUMP > ":" (numero=num()|variable=< nombvp >.image)","(numero1=num()|variable1=< nombvp >.image){
+ 	  if (numero==-1 && numero1==-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+variable+","+variable1;
+ 	  }
+ 	  else if (numero==-1 && numero1!=-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+variable+","+numero1;
+ 	  }
+ 	  else if (numero!=-1 && numero1==-1)
+ 	  {
+ 	  	instrucciones="JUMP"+":"+numero+","+variable1;
+ 	  }
+ 	  else
+ 	  {
+ 	  	instrucciones="JUMP"+":"+numero+","+numero1;
+ 	  }
+ 	  })
+	| (< TURN > ":" (variable=< LEFT >.image|variable=< RIGHT >.image|variable=< AROUND >.image){
+ 	  	instrucciones="turn"+":"+variable;
+ 	  })
+	| (< FACE > ":" (variable=< NORTH >.image|variable=< SOUTH >.image|variable=< EAST >.image |variable=< WEST >.image){
+ 	  if (numero==-1)
+ 	  {
+ 	  	instrucciones="face"+":"+variable;
+ 	  }
+ 	  })
+  | (< NOP > ":" {
+ 	  instrucciones="nop"+":";
+ 	  })
+	|  instrucciones=estrucontrolp(variables,procedimientos,instruccionesproc)
+	)
+	{
+	  return instrucciones;
+	}
+}
+
+  boolean vDrop(int num) throws Error: {
+    }{({int x=(int)world.getPosition().getX();int y=(int)world.getPosition().getY();boolean f=world.blockedInRange(x,y,num,SOUTH);for(int i=y;i<9;i++){Point temp=new Point(x,i);if(world.chipExists(temp)){f=true;}}if(!f&&y+num<9){return true;}else{return false;}})
+  }
+
+  /**
+   * Unsigned decimal number
+   * 
+   * @return the corresponding value of the string
+   * @error corresponding value is too large
+   */
+
+  int num() throws Error: {
+    int total=1;}{<NUM>{try{total=Integer.parseInt(token.image);}catch(NumberFormatException ee){throw new Error("Number out of bounds: "+token.image+" !!");}return total;}
+  }
+
+void put(int num, String Object):
+  	{ }
+	{({
+  if (Object.equals("balloons"))
+  { System.out.println(world.getPosition().toString());
+  	world.putBalloons(num);
+  	System.out.println(world.getPosition().toString());}
+  	
+  else if (Object.equals("chips"))
+  {System.out.println(world.getPosition().toString());
+  world.putChips(num);
+  System.out.println(world.getPosition().toString());}
+
+  })}
+
+void pick(int num, String Object): { } {( {
+  if (Object.equals("balloons"))
+  {System.out.println(world.getPosition().toString());
+  world.grabBalloons(num);
+  System.out.println(world.getPosition().toString()); } 
+
+  else if (Object.equals("chips"))
+  { System.out.println(world.getPosition().toString());
+  world.pickChips(num);
+  System.out.println(world.getPosition().toString()); }
+
+}) }  
+
+void WALKToThe(int num, String D): { } {( {
+  if (D.equals("left")) {world.turnRight(); world.turnRight(); world.turnRight() ; world.WALKForward(num,false);world.turnRight();  } 
+  else if (D.equals("right")) {world.turnRight(); world.WALKForward(num,false); world.turnRight();world.turnRight();world.turnRight();}   
+  else if (D.equals("back")) { world.turnRight();world.turnRight(); world.WALKForward(num,false); world.turnRight();world.turnRight(); } 
+  else if (D.equals("front")) { world.WALKForward(num,false); } }) }
+
+void WALKInDir(int num, String D): { } {( {
+  if (D.equals("west")) {for (int i = 0; i<num; i++) {world.left(); } } 
+  else if (D.equals("east")) {for (int i = 0; i<num; i++) {world.right(); }}   
+  else if (D.equals("north")) {for (int i = 0; i<num; i++) {world.up() ;} } 
+  else if (D.equals("south")) { for (int i = 0; i<num; i++) {world.down() ;}} }) }
+	
+void LEAP(int num, String D): { } {( {
+  if (D.equals("left")) {world.turnRight(); world.turnRight(); world.turnRight() ; world.WALKForward(num,true);world.turnRight();  } 
+  else if (D.equals("right")) {world.turnRight(); world.WALKForward(num,true); world.turnRight();world.turnRight();world.turnRight();}   
+  else if (D.equals("back")) { world.turnRight();world.turnRight(); world.WALKForward(num,true); world.turnRight();world.turnRight(); } 
+  else if (D.equals("front")) { world.WALKForward(num,true); } }) }
+
+void jumpInDir(int num, String D): { } {( {
+  if (D.equals("west")) {world.turnRight(); world.turnRight(); world.turnRight() ; world.WALKForward(num,true);world.turnRight();  } 
+  else if (D.equals("east")) {world.turnRight(); world.WALKForward(num,true); world.turnRight();world.turnRight();world.turnRight();}   
+  else if (D.equals("north"))
+  { world.WALKForward(num,true); } 
+  else if (D.equals("south")) { world.turnRight();world.turnRight(); world.WALKForward(num,true); world.turnRight();world.turnRight(); }	
+ }) } 
+
